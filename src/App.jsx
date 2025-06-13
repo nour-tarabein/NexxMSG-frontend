@@ -5,10 +5,9 @@ import 'bootstrap/dist/css/bootstrap.min.css';
 import './main.css';
 
 import MenuBar from './components/Menu';
-import Chat from './pages/Chat';
+import ChatPage from './pages/ChatPage'; // Import the new ChatPage
 import Login from './pages/Login';
 import Register from './pages/Register';
-import ThemeToggle from './components/ThemeToggle';
 import Landing from './pages/Landing';
 
 function App() {
@@ -16,19 +15,15 @@ function App() {
     <div className="min-h-screen flex flex-col bg-background text-foreground transition-colors duration-500">
       <MenuBar />
 
-      <div className="flex-grow">
+      <main className="flex-grow">
         <Routes>
-          <Route path="/" element={<Landing/>} />
-          <Route path="/landing" element={<Login />} />
-          <Route path="/chat" element={<Chat />} />
+          <Route path="/" element={<Landing />} />
+          <Route path="/chat" element={<ChatPage />} /> 
           <Route path="/login" element={<Login />} />
           <Route path="/register" element={<Register />} />
+          <Route path="*" element={<ChatPage/>} />
         </Routes>
-      </div>
-
-      <footer className="p-4 flex justify-center border-t border-border">
-        <ThemeToggle />
-      </footer>
+      </main>
     </div>
   );
 }

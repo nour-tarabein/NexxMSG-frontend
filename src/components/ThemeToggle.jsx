@@ -1,7 +1,7 @@
 import React from 'react';
 import { Moon, Sun } from 'lucide-react';
 import { useTheme } from 'next-themes';
-import '../main.css'; // ensure Tailwind and custom vars are loaded
+import '../main.css';
 
 export default function ThemeToggle() {
   const { theme, setTheme } = useTheme();
