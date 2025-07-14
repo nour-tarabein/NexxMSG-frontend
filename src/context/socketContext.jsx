@@ -17,7 +17,6 @@ export const SocketProvider = ({ children }) => {
             clearTimeout(connectionTimeoutRef.current);
             connectionTimeoutRef.current = null;
         }
-
         if (user && !socketRef.current) {
             connectionTimeoutRef.current = setTimeout(() => {
                 const socketUrl = process.env.REACT_APP_API_URL || 'http://localhost:3001';
