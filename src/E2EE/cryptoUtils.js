@@ -1,66 +1,98 @@
-//src/E2EE/cryptoUtils.js
+// src/E2EE/cryptoUtils.js
+
 export function arrayBufferToBase64(buffer) {
-    if (!buffer) {
-        console.error('[cryptoUtils] Null or undefined buffer provided to arrayBufferToBase64');
+    if (buffer instanceof Uint8Array) {
+        buffer = buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength);
+    }
+    
+    if (!buffer || !(buffer instanceof ArrayBuffer)) {
+        console.error('[cryptoUtils] Invalid buffer provided to arrayBufferToBase64', typeof buffer, buffer);
+        return '';
+    }
+    
+    if (buffer.byteLength === 0) {
+        console.warn('[cryptoUtils] Empty buffer provided to arrayBufferToBase64');
         return '';
     }
     
     try {
-        const view = buffer instanceof ArrayBuffer 
-            ? new Uint8Array(buffer) 
-            : buffer instanceof Uint8Array
-                ? buffer
-                : new Uint8Array(buffer.buffer || buffer);
-
-        console.log('[cryptoUtils] Converting buffer to base64, length:', view.byteLength);
-
-        const chunkSize = 0xffff; 
+        const bytes = new Uint8Array(buffer);
         let binary = '';
-        
-        for (let i = 0; i < view.byteLength; i += chunkSize) {
-            const chunk = view.subarray(i, Math.min(i + chunkSize, view.byteLength));
-            binary += String.fromCharCode.apply(null, chunk);
+        for (let i = 0; i < bytes.byteLength; i++) {
+            binary += String.fromCharCode(bytes[i]);
         }
         
-        const result = window.btoa(binary);
-        console.log('[cryptoUtils] Base64 result length:', result.length);
-        return result;
+        const base64 = btoa(binary);
+        return base64;
     } catch (error) {
-        console.error('[cryptoUtils] Error in arrayBufferToBase64:', error);
-        throw new Error('Failed to convert ArrayBuffer to Base64: ' + error.message);
+        console.error('[cryptoUtils] Error converting ArrayBuffer to base64:', error);
+        return '';
     }
 }
 
-
 export function base64ToArrayBuffer(base64) {
-    if (!base64 || base64.length === 0) {
-        console.error('[cryptoUtils] Empty or missing base64 string provided');
-        throw new Error('Base64 string cannot be empty');
+    if (!base64 || typeof base64 !== 'string') {
+        console.error('[cryptoUtils] Invalid base64 string provided');
+        return new ArrayBuffer(0);
     }
     
     try {
-        let sanitizedBase64 = base64.trim().replace(/[^A-Za-z0-9+/=]/g, '');
-        
-        const paddingNeeded = sanitizedBase64.length % 4;
-        if (paddingNeeded) {
-            sanitizedBase64 += '='.repeat(4 - paddingNeeded);
+        const cleanBase64 = base64.trim().replace(/\s/g, '');
+        if (!/^[A-Za-z0-9+/]*={0,2}$/.test(cleanBase64)) {
+            console.error('[cryptoUtils] Invalid base64 format');
+            return new ArrayBuffer(0);
         }
         
-        if (!/^[A-Za-z0-9+/=]+$/.test(sanitizedBase64)) {
-            throw new Error('Invalid base64 string format');
+        const binary = atob(cleanBase64);
+        const bytes = new Uint8Array(binary.length);
+        
+        for (let i = 0; i < binary.length; i++) {
+            bytes[i] = binary.charCodeAt(i);
         }
         
-        console.log(`[cryptoUtils] Processing base64 string of length ${sanitizedBase64.length}`);
-        
-        const binary_string = window.atob(sanitizedBase64);
-        const len = binary_string.length;
-        const bytes = new Uint8Array(len);
-        for (let i = 0; i < len; i++) {
-            bytes[i] = binary_string.charCodeAt(i);
-        }
         return bytes.buffer;
     } catch (error) {
-        console.error('[cryptoUtils] Error in base64ToArrayBuffer:', error);
-        throw new Error('Failed to convert Base64 to ArrayBuffer: ' + error.message);
+        console.error('[cryptoUtils] Error decoding base64:', error);
+        return new ArrayBuffer(0);
     }
+}
+
+export function stringToArrayBuffer(str) {
+    const encoder = new TextEncoder();
+    return encoder.encode(str).buffer;
+}
+
+export function arrayBufferToString(buffer) {
+    const decoder = new TextDecoder();
+    return decoder.decode(buffer);
+}
+
+export function concatenateArrayBuffers(...buffers) {
+    const validBuffers = buffers.filter(b => b instanceof ArrayBuffer && b.byteLength > 0);
+    if (validBuffers.length === 0) return new ArrayBuffer(0);
+    
+    const totalLength = validBuffers.reduce((sum, buf) => sum + buf.byteLength, 0);
+    const result = new Uint8Array(totalLength);
+    
+    let offset = 0;
+    for (const buffer of validBuffers) {
+        result.set(new Uint8Array(buffer), offset);
+        offset += buffer.byteLength;
+    }
+    
+    return result.buffer;
+}
+
+export function compareArrayBuffers(a, b) {
+    if (!(a instanceof ArrayBuffer) || !(b instanceof ArrayBuffer)) return false;
+    if (a.byteLength !== b.byteLength) return false;
+    
+    const viewA = new Uint8Array(a);
+    const viewB = new Uint8Array(b);
+    
+    for (let i = 0; i < viewA.length; i++) {
+        if (viewA[i] !== viewB[i]) return false;
+    }
+    
+    return true;
 }

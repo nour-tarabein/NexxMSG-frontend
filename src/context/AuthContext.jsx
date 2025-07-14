@@ -1,4 +1,3 @@
-// src/context/authContext.js
 import { useCallback, useEffect, useState, createContext, useContext } from "react";
 import { postRequest } from "../utils/services";
 import * as keyManager from '../E2EE/keyManager';
@@ -15,93 +14,82 @@ export const AuthProvider = ({ children }) => {
     const [registerError, setRegisterError] = useState(null);
     const [keyError, setKeyError] = useState(null);
 
-    const handleKeyInitialization = useCallback(async () => {
+    const initializeAndRegisterKeys = useCallback(async (authToken) => {
+        if (!authToken) {
+            console.error("[Auth] Cannot register keys without an auth token.");
+            setKeyError("Authentication token is missing.");
+            return;
+        }
+
         try {
-            console.log("[AuthContext] STEP 1: Calling handleKeyInitialization...");
             setKeyError(null);
-            
             const keyResult = await keyManager.initializeUserKeysIfNeeded();
-            
-            console.log("[AuthContext] STEP 2: Received key result from keyManager.", keyResult);
 
             if (keyResult.isNew && keyResult.keysForServer) {
-                console.log("%c[AuthContext] STEP 3: New keys detected. Preparing to UPLOAD to server.", "color: blue; font-weight: bold;");
-                console.log("[AuthContext] Payload to be sent:", keyResult.keysForServer);
-                
-                const token = localStorage.getItem('token');
-                if (!token) {
-                    throw new Error("No auth token found in localStorage, cant do key registration.");
-                }
-                console.log(`[AuthContext] Auth token found. Making API call...`);
+                console.log("%c[Auth] New keys detected. Registering with server...", "color: blue; font-weight: bold;");
 
-                const response = await postRequest('keys/register', keyResult.keysForServer);
-                
-                console.log("STEP 4: RESPONSE from '/keys/register' API:",  response);
+                const response = await postRequest('keys/register', keyResult.keysForServer, authToken);
 
                 if (response.error) {
-                    throw new Error(`Server returned an error during key registration: ${response.message}`);
+                    throw new Error(`Server error during key registration: ${response.message}`);
                 }
                 
-                console.log("[AuthContext] KEY REGISTRATION SUCCEEDED.");
+                console.log("[Auth] Key registration succeeded.");
             } else {
-                console.log("[AuthContext] Keys already exist in local storage, no need to upload");
+                console.log("[Auth] Existing keys found, no registration needed.");
             }
         } catch (error) {
-            console.error("[AuthContext] CRITICAL ERROR during key initialization/upload:", error);
+            console.error("[Auth] CRITICAL ERROR during key initialization/upload:", error);
             setKeyError(error.message);
         }
     }, []);
 
     useEffect(() => {
-        (async () => {
-          const storedUser = localStorage.getItem('user');
-          const token = localStorage.getItem('token');
-          if (storedUser && token) {
-            const parsedUser = JSON.parse(storedUser);
-            setUser(parsedUser);
-            await handleKeyInitialization();
-          }
-          setLoadingUser(false);
-        })();
-      }, [handleKeyInitialization]);
+        const storedUser = localStorage.getItem('user');
+        if (storedUser) {
+            setUser(JSON.parse(storedUser));
+        }
+        setLoadingUser(false);
+    }, []);
 
-    const login = useCallback(
-        async ({ email, password }) => {
-          setIsLoginLoading(true);
-          setLoginError(null);
-          try {
+    useEffect(() => {
+        if (user) {
+            const token = localStorage.getItem('token');
+            initializeAndRegisterKeys(token);
+        }
+    }, [user, initializeAndRegisterKeys]);
+
+    const login = useCallback(async ({ email, password }) => {
+        setIsLoginLoading(true);
+        setLoginError(null);
+        try {
             const res = await postRequest('users/login', { email, password });
-            console.log("[AuthContext] Login response received:", res);
             if (res.error) throw new Error(res.message);
             
             localStorage.setItem('user', JSON.stringify(res.user));
             if (res.token) localStorage.setItem('token', res.token);
-            setUser(res.user);
-            await handleKeyInitialization();
+            
+            setUser(res.user); 
             return res;
-          } catch (err) {
-            console.error("[AuthContext] Login failed:", err);
+        } catch (err) {
             setLoginError(err.message);
             throw err;
-          } finally {
+        } finally {
             setIsLoginLoading(false);
-          }
-        },
-        [handleKeyInitialization]
-    );
+        }
+    }, []);
     
     const register = useCallback(async (info = registerInfo) => {
         setIsRegisterLoading(true);
         setRegisterError(null);
-        try{
+        try {
             const res = await postRequest('users/register', info);
             if (res.error) throw new Error(res.message);
             
             localStorage.setItem('user', JSON.stringify(res.user));
             if (res.token) localStorage.setItem('token', res.token);
+
             setUser(res.user);
-            await handleKeyInitialization();
-            setIsRegisterLoading(false);
             return res;
         } catch (error) {
             setRegisterError(error.message);
@@ -109,13 +97,14 @@ export const AuthProvider = ({ children }) => {
         } finally {
             setIsRegisterLoading(false);
         }
-    }, [registerInfo, handleKeyInitialization]);
+    }, [registerInfo]);
     
     const logout = useCallback(() => {
         localStorage.removeItem('user');
         localStorage.removeItem('token');
         setUser(null);
         setKeyError(null);
+        keyManager.clearAllKeys(); 
     }, []);
     
     return (
