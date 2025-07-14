@@ -1,61 +1,71 @@
-export const baseURL = process.env.REACT_APP_API_URL || 'http://localhost:3001/api';
+// src/utils/services.js
+const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:3001/api';
 
-export const postRequest = async (endpoint, body) => {
-    const token = localStorage.getItem('token');
-    
-    const headers = {
-        "Content-Type": "application/json",
-    };
-
-    if (token) {
-        headers["Authorization"] = `Bearer ${token}`;
-    }
-
-    try {
-        const response = await fetch(`${baseURL}/${endpoint}`, {
-            method: 'POST',
-            headers: headers,
-            body: JSON.stringify(body),
-        });
-
-        const data = await response.json();
-
-        if (!response.ok) {
-            return { error: true, message: data.message || "An error occurred." };
-        }
-
-        return data;
-
-    } catch (error) {
-        // This will catch network errors (e.g., server down) or JSON parsing errors
-        return { error: true, message: error.message || "A network error occurred." };
-    }
+// Helper to get auth headers
+const getAuthHeaders = (token = null) => {
+  const storedToken = token || localStorage.getItem('token');
+  const headers = {
+    'Content-Type': 'application/json',
+  };
+  
+  if (storedToken) {
+    headers['Authorization'] = `Bearer ${storedToken}`;
+  }
+  
+  return headers;
 };
 
-export const getRequest = async (endpoint) => {
-    const token = localStorage.getItem('token');
-    
-    const headers = {};
+export const getRequest = async (url, token = null) => {
+  try {
+    const response = await fetch(`${API_URL}/${url}`, {
+      method: 'GET',
+      headers: getAuthHeaders(token),
+      credentials: 'include', 
+    });
 
-    if (token) {
-        headers["Authorization"] = `Bearer ${token}`;
+    const data = await response.json();
+
+    if (!response.ok) {
+      if (response.status === 401) {
+        localStorage.removeItem('user');
+        localStorage.removeItem('token');
+        window.location.href = '/login';
+      }
+      
+      return { error: true, message: data.message || 'Request failed' };
     }
 
-    try {
-        const response = await fetch(`${baseURL}/${endpoint}`, {
-            method: 'GET',
-            headers: headers,
-        });
+    return data;
+  } catch (error) {
+    console.error('GET request error:', error);
+    return { error: true, message: error.message };
+  }
+};
 
-        const data = await response.json();
+export const postRequest = async (url, body, token = null) => {
+  try {
+    const response = await fetch(`${API_URL}/${url}`, {
+      method: 'POST',
+      headers: getAuthHeaders(token),
+      credentials: 'include',
+      body: JSON.stringify(body),
+    });
 
-        if (!response.ok) {
-            return { error: true, message: data.message || "An error occurred." };
-        }
+    const data = await response.json();
 
-        return data;
-        
-    } catch (error) {
-        return { error: true, message: error.message || "A network error occurred." };
+    if (!response.ok) {
+      if (response.status === 401) {
+        localStorage.removeItem('user');
+        localStorage.removeItem('token');
+        window.location.href = '/login';
+      }
+      
+      return { error: true, message: data.message || 'Request failed' };
     }
+
+    return data;
+  } catch (error) {
+    console.error('POST request error:', error);
+    return { error: true, message: error.message };
+  }
 };

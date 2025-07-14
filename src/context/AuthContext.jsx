@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState, createContext, useContext } from "react";
-import { postRequest } from "../utils/services";
+import { postRequest, getRequest } from "../utils/services";
 import * as keyManager from '../E2EE/keyManager';
 
 export const AuthContext = createContext(null);
@@ -44,18 +44,48 @@ export const AuthProvider = ({ children }) => {
         }
     }, []);
 
-    useEffect(() => {
-        const storedUser = localStorage.getItem('user');
-        if (storedUser) {
-            setUser(JSON.parse(storedUser));
+    const verifyToken = useCallback(async (token) => {
+        try {
+            const response = await getRequest('users/verify', token);
+            return !response.error;
+        } catch (error) {
+            console.error('Token verification failed:', error);
+            return false;
         }
-        setLoadingUser(false);
+    }, []);
+
+    useEffect(() => {
+        const loadStoredUser = async () => {
+            const storedUser = localStorage.getItem('user');
+            const storedToken = localStorage.getItem('token');
+            
+            if (storedUser && storedToken) {
+                try {
+                    const parsedUser = JSON.parse(storedUser);
+                    
+                    console.log('[Auth] Restored user from localStorage:', parsedUser.email);
+                    setUser(parsedUser);
+                } catch (error) {
+                    console.error('[Auth] Failed to restore session:', error);
+                    localStorage.removeItem('user');
+                    localStorage.removeItem('token');
+                }
+            }
+            setLoadingUser(false);
+        };
+        
+        loadStoredUser();
     }, []);
 
     useEffect(() => {
         if (user) {
             const token = localStorage.getItem('token');
-            initializeAndRegisterKeys(token);
+            if (token) {
+                initializeAndRegisterKeys(token);
+            } else {
+                console.error('[Auth] User exists but no token found');
+                logout();
+            }
         }
     }, [user, initializeAndRegisterKeys]);
 
@@ -67,7 +97,9 @@ export const AuthProvider = ({ children }) => {
             if (res.error) throw new Error(res.message);
             
             localStorage.setItem('user', JSON.stringify(res.user));
-            if (res.token) localStorage.setItem('token', res.token);
+            if (res.token) {
+                localStorage.setItem('token', res.token);
+            }
             
             setUser(res.user); 
             return res;
@@ -87,7 +119,9 @@ export const AuthProvider = ({ children }) => {
             if (res.error) throw new Error(res.message);
             
             localStorage.setItem('user', JSON.stringify(res.user));
-            if (res.token) localStorage.setItem('token', res.token);
+            if (res.token) {
+                localStorage.setItem('token', res.token);
+            }
 
             setUser(res.user);
             return res;
@@ -102,14 +136,31 @@ export const AuthProvider = ({ children }) => {
     const logout = useCallback(() => {
         localStorage.removeItem('user');
         localStorage.removeItem('token');
+        
         setUser(null);
         setKeyError(null);
+        
         keyManager.clearAllKeys(); 
+        
+        console.log('[Auth] User logged out');
     }, []);
     
     return (
         <AuthContext.Provider
-            value={{ user, loadingUser, isLoginLoading, loginError, login, registerInfo, setRegisterInfo, isRegisterLoading, registerError, register, logout, keyError }}
+            value={{ 
+                user, 
+                loadingUser, 
+                isLoginLoading, 
+                loginError, 
+                login, 
+                registerInfo, 
+                setRegisterInfo, 
+                isRegisterLoading, 
+                registerError, 
+                register, 
+                logout, 
+                keyError 
+            }}
         >
             {children}
         </AuthContext.Provider>
