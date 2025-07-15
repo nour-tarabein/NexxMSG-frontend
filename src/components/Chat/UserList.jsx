@@ -7,8 +7,12 @@ import { ChatContext } from '../../context/ChatContext';
 import { useAuth } from '../../context/AuthContext';
 import { getRecipientUser } from '../../utils/chatUtils';
 
+// Solid orange color for hover state
+const ORANGE_GRADIENT = 'rgba(249,115,22,0.4)';
+// Solid orange for selected state
 const ORANGE_SOLID = 'hsl(25, 95%, 55%)';
 
+// Variants control only rotate and opacity
 const itemVariants = {
   initial:  { rotateX:  0, opacity: 1 },
   hovered:  { rotateX: -90, opacity: 0 },
@@ -28,6 +32,7 @@ const sharedTransition = {
   duration: 0.5,
 };
 
+// Reusable chat item content - removed profile picture
 const ChatItemContent = ({ chat, user, isSelected }) => {
   const recipient = getRecipientUser(chat, user);
   const textColor      = isSelected ? 'text-primary-foreground'    : 'text-foreground';
@@ -50,12 +55,15 @@ const ChatItemContent = ({ chat, user, isSelected }) => {
   );
 };
 
+// Chat item component with cursor tracking and click animation
 const ChatItem = ({ chat, user, isSelected, updateCurrentChat }) => {
   const [mousePosition, setMousePosition] = useState({ x: 50, y: 50 });
+  const [isClicked, setIsClicked] = useState(false);
+  const [clickPosition, setClickPosition] = useState({ x: 50, y: 50 });
   const itemRef = useRef(null);
 
   const handleMouseMove = (e) => {
-    if (itemRef.current) {
+    if (itemRef.current && !isSelected) {
       const rect = itemRef.current.getBoundingClientRect();
       const x = ((e.clientX - rect.left) / rect.width) * 100;
       const y = ((e.clientY - rect.top) / rect.height) * 100;
@@ -63,48 +71,97 @@ const ChatItem = ({ chat, user, isSelected, updateCurrentChat }) => {
     }
   };
 
+  const handleClick = (e) => {
+    if (itemRef.current) {
+      const rect = itemRef.current.getBoundingClientRect();
+      const x = ((e.clientX - rect.left) / rect.width) * 100;
+      const y = ((e.clientY - rect.top) / rect.height) * 100;
+      setClickPosition({ x, y });
+    }
+    setIsClicked(true);
+    updateCurrentChat(chat);
+    // Reset click animation after transition
+    setTimeout(() => setIsClicked(false), 300);
+  };
+
+  // Create dynamic gradient based on cursor position
   const createDynamicGradient = (x, y) => {
     return `radial-gradient(circle at ${x}% ${y}%, rgba(249,115,22,0.6) 10%, rgba(249,115,22,0.4) 30%, rgba(234,88,12,0.15) 90%)`;
   };
 
   return (
-    <motion.div
-      ref={itemRef}
-      className="relative w-full rounded-2xl overflow-visible"
-      style={{ perspective: '600px' }}
-      initial="initial"
-      animate={isSelected ? 'selected' : 'initial'}
-      whileHover="hovered"
-      onMouseMove={handleMouseMove}
-      onClick={() => updateCurrentChat(chat)}
-    >
+    <>
       <motion.div
-        className="relative z-10 flex items-center p-3 bg-card rounded-2xl backface-hidden"
-        variants={itemVariants}
-        transition={sharedTransition}
-        style={{
-          transformStyle:  'preserve-3d',
-          transformOrigin: 'center bottom',
-        }}
+        ref={itemRef}
+        className="relative w-full rounded-2xl overflow-visible"
+        style={{ perspective: '600px' }}
+        initial="initial"
+        animate={isSelected ? 'selected' : 'initial'}
+        whileHover="hovered"
+        onMouseMove={handleMouseMove}
+        onClick={handleClick}
       >
-        <ChatItemContent chat={chat} user={user} isSelected={false} />
-      </motion.div>
+        {/* front face */}
+        <motion.div
+          className="relative z-10 flex items-center p-3 bg-card rounded-2xl backface-hidden"
+          variants={itemVariants}
+          transition={sharedTransition}
+          style={{
+            transformStyle:  'preserve-3d',
+            transformOrigin: 'center bottom',
+          }}
+        >
+          {/* Pass isSelected=false here so text stays black on hover */}
+          <ChatItemContent chat={chat} user={user} isSelected={false} />
+        </motion.div>
 
-      <motion.div
-        className="absolute inset-0 z-10 flex items-center p-3 rounded-2xl backface-hidden"
-        variants={backVariants}
-        transition={sharedTransition}
-        style={{
-          transformStyle:  'preserve-3d',
-          transformOrigin: 'center top',
-          background: isSelected 
-            ? ORANGE_SOLID 
-            : createDynamicGradient(mousePosition.x, mousePosition.y),
-        }}
-      >
-        <ChatItemContent chat={chat} user={user} isSelected={isSelected} />
+        {/* back face (highlight on hover, solid on select) */}
+        <motion.div
+          className="absolute inset-0 z-10 flex items-center p-3 rounded-2xl backface-hidden overflow-hidden"
+          variants={backVariants}
+          transition={sharedTransition}
+          style={{
+            transformStyle:  'preserve-3d',
+            transformOrigin: 'center top',
+            background: isSelected 
+              ? ORANGE_SOLID 
+              : createDynamicGradient(mousePosition.x, mousePosition.y),
+          }}
+        >
+          {/* Expanding circle overlay for click animation */}
+          {isClicked && (
+            <div
+              className="absolute rounded-full"
+              style={{
+                background: ORANGE_SOLID,
+                left: `${clickPosition.x}%`,
+                top: `${clickPosition.y}%`,
+                width: '20px',
+                height: '20px',
+                transform: 'translate(-50%, -50%) scale(0)',
+                animation: 'expandCircleScale 0.3s cubic-bezier(0.4, 0.0, 0.2, 1) forwards'
+              }}
+            />
+          )}
+          {/* Now only switch to white text when actually selected */}
+          <ChatItemContent chat={chat} user={user} isSelected={isSelected} />
+        </motion.div>
       </motion.div>
-    </motion.div>
+      
+      {/* CSS animation */}
+      {isClicked && (
+        <style>{`
+          @keyframes expandCircleScale {
+            0% {
+              transform: translate(-50%, -50%) scale(0);
+            }
+            100% {
+              transform: translate(-50%, -50%) scale(35);
+            }
+          }
+        `}</style>
+      )}
+    </>
   );
 };
 

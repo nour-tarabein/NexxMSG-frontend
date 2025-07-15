@@ -13,10 +13,14 @@ export default function ChatWindow() {
   const [textMessage, setTextMessage] = useState('');
   const [expandedMessages, setExpandedMessages] = useState(new Set());
   const scroll = useRef();
+  const chatContainerRef = useRef();
 
+  // Always start at bottom when chat or messages change
   useEffect(() => {
-    scroll.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
+    if (chatContainerRef.current && messages?.length > 0) {
+      chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
+    }
+  }, [currentChat?.id, messages]);
 
   const recipient = currentChat ? getRecipientUser(currentChat, user) : null;
 
@@ -34,14 +38,6 @@ export default function ChatWindow() {
             Select a conversation from the left panel to start messaging.
           </p>
         </div>
-      </div>
-    );
-  }
-
-  if (isMessagesLoading) {
-    return (
-      <div className="flex-1 flex items-center justify-center text-muted-foreground">
-        Loading Chat...
       </div>
     );
   }
@@ -80,18 +76,22 @@ export default function ChatWindow() {
         </div>
       </header>
 
-      <div className="flex-1 overflow-y-auto p-6 space-y-4">
-        {messages?.map((message) => {
+      <div 
+        ref={chatContainerRef}
+        className="flex-1 overflow-y-auto p-6 space-y-4"
+      >
+        {messages?.map((message, index) => {
           const isSender = message.senderId === user?.id;
           const messageId = message.id || message.tempId;
           const isExpanded = expandedMessages.has(messageId);
           const isLong = isMessageLong(message.text);
           const displayText = isLong && !isExpanded ? truncateMessage(message.text) : message.text;
+          const isLastMessage = index === messages.length - 1;
           
           return (
             <div
               key={messageId}
-              ref={scroll}
+              ref={isLastMessage ? scroll : null}
               className={`flex ${
                 isSender ? 'justify-end' : 'justify-start'
               }`}
@@ -140,36 +140,13 @@ export default function ChatWindow() {
           <button className="p-3 text-muted-foreground hover:text-primary-foreground rounded-full transition-colors">
             <Paperclip className="h-5 w-5" />
           </button>
-          <div 
-            className="relative rounded-full"
-            style={{ perspective: '200px' }}
+          <button
+            onClick={handleSend}
+            className="p-3 rounded-full hover:opacity-90 transition-opacity"
+            style={{ background: 'hsl(25, 95%, 55%)', color: '#fff' }}
           >
-            <button
-              onClick={handleSend}
-              className="relative z-10 p-3 rounded-full transition-all duration-300 ease-out hover:rotateX-90 hover:opacity-0"
-              style={{ 
-                background: 'hsl(25, 95%, 55%)', 
-                color: '#fff',
-                transformStyle: 'preserve-3d',
-                transformOrigin: 'center bottom'
-              }}
-            >
-              <Send className="h-5 w-5" />
-            </button>
-
-            <button
-              onClick={handleSend}
-              className="absolute inset-0 p-3 rounded-full transition-all duration-300 ease-out rotateX-90 opacity-0 hover:rotateX-0 hover:opacity-100"
-              style={{ 
-                background: 'hsl(15, 100%, 65%)', 
-                color: '#fff',
-                transformStyle: 'preserve-3d',
-                transformOrigin: 'center top'
-              }}
-            >
-              <Send className="h-5 w-5" />
-            </button>
-          </div>
+            <Send className="h-5 w-5" />
+          </button>
         </div>
       </div>
     </div>

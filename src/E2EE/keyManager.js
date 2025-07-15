@@ -2,11 +2,11 @@ import { arrayBufferToBase64, base64ToArrayBuffer } from './cryptoUtils';
 import { getRequest } from '../utils/services';
 
 // Constants
-const ENCRYPTION_ALGORITHM = 'AES-GCM';
-const ASYMMETRIC_ALGORITHM = 'RSA-OAEP';
-const HASH_ALGORITHM = 'SHA-256';
-const AES_KEY_LENGTH = 256;
-const RSA_KEY_LENGTH = 2048;
+const encrpytionAlgorithm = 'AES-GCM';
+const asymmetric = 'RSA-OAEP';
+const hash = 'SHA-256';
+const AES = 256;
+const RSA = 2048;
 const IV_LENGTH = 12;
 
 const MESSAGE_TYPES = {
@@ -49,14 +49,14 @@ class KeyStore {
                     publicKey: await crypto.subtle.importKey(
                         'jwk',
                         keyData.publicKey,
-                        { name: ASYMMETRIC_ALGORITHM, hash: HASH_ALGORITHM },
+                        { name: asymmetric, hash: hash },
                         true,
                         ['encrypt']
                     ),
                     privateKey: await crypto.subtle.importKey(
                         'jwk',
                         keyData.privateKey,
-                        { name: ASYMMETRIC_ALGORITHM, hash: HASH_ALGORITHM },
+                        { name: asymmetric, hash: hash },
                         true,
                         ['decrypt']
                     )
@@ -73,7 +73,7 @@ class KeyStore {
                     const aesKey = await crypto.subtle.importKey(
                         'jwk',
                         keyData,
-                        { name: ENCRYPTION_ALGORITHM },
+                        { name: encrpytionAlgorithm },
                         true,
                         ['encrypt', 'decrypt']
                     );
@@ -87,7 +87,7 @@ class KeyStore {
                     const publicKey = await crypto.subtle.importKey(
                         'jwk',
                         keyData,
-                        { name: ASYMMETRIC_ALGORITHM, hash: HASH_ALGORITHM },
+                        { name: asymmetric, hash: hash },
                         true,
                         ['encrypt']
                     );
@@ -214,8 +214,8 @@ function validateMessage(message) {
 async function generateAESKey() {
     return await crypto.subtle.generateKey(
         {
-            name: ENCRYPTION_ALGORITHM,
-            length: AES_KEY_LENGTH,
+            name: encrpytionAlgorithm,
+            length: AES,
         },
         true,
         ['encrypt', 'decrypt']
@@ -225,10 +225,10 @@ async function generateAESKey() {
 async function generateRSAKeyPair() {
     return await crypto.subtle.generateKey(
         {
-            name: ASYMMETRIC_ALGORITHM,
-            modulusLength: RSA_KEY_LENGTH,
+            name: asymmetric,
+            modulusLength: RSA,
             publicExponent: new Uint8Array([1, 0, 1]),
-            hash: HASH_ALGORITHM,
+            hash: hash,
         },
         true,
         ['encrypt', 'decrypt']
@@ -255,7 +255,11 @@ export async function initializeUserKeysIfNeeded() {
         }
 
         const newKeyPair = await generateRSAKeyPair();
-        const newRegistrationId = Math.floor(Math.random() * 1000000);
+        const randomBytes = new Uint8Array(16);
+        crypto.getRandomValues(randomBytes);
+        const newRegistrationId = Array.from(randomBytes)
+        .map(byte => byte.toString(16).padStart(2, '0'))
+        .join('');
 
         await keyStore.setIdentityKeyPair(newKeyPair);
         await keyStore.setRegistrationId(newRegistrationId);
@@ -286,7 +290,7 @@ export async function processPreKeyBundle(recipientId, preKeyBundle) {
         const publicKey = await crypto.subtle.importKey(
             'jwk',
             publicKeyData,
-            { name: ASYMMETRIC_ALGORITHM, hash: HASH_ALGORITHM },
+            { name: asymmetric, hash: hash },
             true,
             ['encrypt']
         );
@@ -338,7 +342,7 @@ export async function encryptMessage(recipientId, plainTextMessage) {
         
         const encryptedMessageBuffer = await crypto.subtle.encrypt(
             {
-                name: ENCRYPTION_ALGORITHM,
+                name: encrpytionAlgorithm,
                 iv: iv,
             },
             sessionKey,
@@ -356,7 +360,7 @@ export async function encryptMessage(recipientId, plainTextMessage) {
         
         const encryptedSessionKeyBuffer = await crypto.subtle.encrypt(
             {
-                name: ASYMMETRIC_ALGORITHM,
+                name: asymmetric,
             },
             recipientPublicKey,
             sessionKeyBuffer
@@ -410,7 +414,7 @@ export async function decryptMessage(senderId, remoteSignalMessage) {
         const encryptedSessionKey = base64ToArrayBuffer(encryptedData.sessionKey);
         const sessionKeyBuffer = await crypto.subtle.decrypt(
             {
-                name: ASYMMETRIC_ALGORITHM,
+                name: asymmetric,
             },
             identityKeyPair.privateKey,
             encryptedSessionKey
@@ -420,7 +424,7 @@ export async function decryptMessage(senderId, remoteSignalMessage) {
         const sessionKey = await crypto.subtle.importKey(
             'jwk',
             sessionKeyJWK,
-            { name: ENCRYPTION_ALGORITHM },
+            { name: encrpytionAlgorithm },
             true,
             ['encrypt', 'decrypt']
         );
@@ -432,7 +436,7 @@ export async function decryptMessage(senderId, remoteSignalMessage) {
 
         const decryptedMessage = await crypto.subtle.decrypt(
             {
-                name: ENCRYPTION_ALGORITHM,
+                name: encrpytionAlgorithm,
                 iv: iv,
             },
             sessionKey,
@@ -461,7 +465,7 @@ export async function decryptWithStoredSessionKey(partnerId, encryptedData) {
         const encryptedMessage = base64ToArrayBuffer(decodedData.message);
 
         const decryptedBuffer = await crypto.subtle.decrypt(
-            { name: ENCRYPTION_ALGORITHM, iv: iv },
+            { name: encrpytionAlgorithm, iv: iv },
             sessionKey,
             encryptedMessage
         );
