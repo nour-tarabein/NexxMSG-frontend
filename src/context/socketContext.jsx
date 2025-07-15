@@ -22,7 +22,6 @@ export const SocketProvider = ({ children }) => {
                 const socketUrl = process.env.REACT_APP_API_URL || 'http://localhost:3001';
                 const token = localStorage.getItem('token');
 
-                console.log(`[SocketContext] Creating new socket connection for user ${user.id}`);
 
                 const newSocket = io(socketUrl, {
                     auth: {

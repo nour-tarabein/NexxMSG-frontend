@@ -1,7 +1,6 @@
 // src/utils/services.js
 const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:3001/api';
 
-// Helper to get auth headers
 const getAuthHeaders = (token = null) => {
   const storedToken = token || localStorage.getItem('token');
   const headers = {
