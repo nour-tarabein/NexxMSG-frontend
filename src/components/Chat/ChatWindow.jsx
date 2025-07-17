@@ -69,10 +69,6 @@ export default function ChatWindow() {
           <h2 className="text-lg font-bold text-foreground">
             {recipient?.name}
           </h2>
-          <p className="text-sm text-green-500 flex items-center gap-1.5">
-            <span className="h-2 w-2 bg-green-500 rounded-full animate-pulse" />
-            Online
-          </p>
         </div>
       </header>
 

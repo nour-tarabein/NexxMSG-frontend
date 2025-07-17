@@ -64,7 +64,7 @@ class KeyStore {
             }
 
             if (storedRegId) {
-                this.registrationId = parseInt(storedRegId);
+                this.registrationId = storedRegId;
             }
 
             if (storedSessions) {
