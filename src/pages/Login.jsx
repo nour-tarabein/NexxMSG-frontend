@@ -1,4 +1,4 @@
-// src/pages/Login.jsx - Enhanced Dark Mode
+// src/pages/Login.jsx
 import React, { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useNavigate, Link } from 'react-router-dom';
@@ -23,7 +23,6 @@ export default function Login() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50 dark:from-slate-900 dark:via-slate-800 dark:to-indigo-950 text-foreground transition-colors duration-500">
-      {/* Header */}
       <header className="flex justify-between items-center p-6 max-w-7xl mx-auto">
         <Link to="/" className="flex items-center gap-2">
           <div className="relative">
@@ -47,7 +46,6 @@ export default function Login() {
 
       <main className="flex flex-1 items-center justify-center px-6 py-16">
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-16 items-center max-w-6xl w-full">
-          {/* Left Content */}
           <motion.div 
             className="space-y-8 text-center lg:text-left"
             initial={{ opacity: 0, x: -50 }}
@@ -137,7 +135,6 @@ export default function Login() {
                 </div>
 
                 <form onSubmit={handleSubmit} className="space-y-5">
-                  {/* Email Field */}
                   <div className="space-y-2">
                     <label className="block text-sm font-medium text-slate-700 dark:text-slate-200">
                       Email address
@@ -155,7 +152,6 @@ export default function Login() {
                     </div>
                   </div>
 
-                  {/* Password Field */}
                   <div className="space-y-2">
                     <label className="block text-sm font-medium text-slate-700 dark:text-slate-200">
                       Password
@@ -180,14 +176,12 @@ export default function Login() {
                     </div>
                   </div>
 
-                  {/* Error Message */}
                   {loginError && (
                     <div className="p-3 bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800/50 rounded-xl">
                       <p className="text-red-600 dark:text-red-400 text-sm">{loginError}</p>
                     </div>
                   )}
 
-                  {/* Submit Button */}
                   <button
                     type="submit"
                     disabled={isLoginLoading}

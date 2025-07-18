@@ -36,7 +36,7 @@ export const ChatContextProvider = ({ children }) => {
       await keyManager.ensureSessionFromPreKeyMessage(message);
 
       if (message.senderId === user.id) {
-        console.warn('Received our own message via socket - this is unusual');
+        console.warn('user received their own message:', message);
         return;
       }
       
@@ -150,8 +150,8 @@ export const ChatContextProvider = ({ children }) => {
 
   const createChat = useCallback(async (recipientId) => {
       if (!user || !recipientId) return;
-      
-      if (recipientId === user.id) return;
+
+
 
       const existing = userChats.find(c => c.members.some(m => m.id === recipientId));
       if (existing) return updateCurrentChat(existing);

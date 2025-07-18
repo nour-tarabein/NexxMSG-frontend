@@ -7,12 +7,10 @@ import { ChatContext } from '../../context/ChatContext';
 import { useAuth } from '../../context/AuthContext';
 import { getRecipientUser } from '../../utils/chatUtils';
 
-// Solid orange color for hover state
-const ORANGE_GRADIENT = 'rgba(249,115,22,0.4)';
+
 // Solid orange for selected state
 const ORANGE_SOLID = 'hsl(25, 95%, 55%)';
 
-// Variants control only rotate and opacity
 const itemVariants = {
   initial:  { rotateX:  0, opacity: 1 },
   hovered:  { rotateX: -90, opacity: 0 },

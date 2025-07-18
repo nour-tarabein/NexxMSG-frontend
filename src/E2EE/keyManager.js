@@ -1,7 +1,6 @@
 import { arrayBufferToBase64, base64ToArrayBuffer } from './cryptoUtils';
 import { getRequest } from '../utils/services';
 
-// Constants
 const encrpytionAlgorithm = 'AES-GCM';
 const asymmetric = 'RSA-OAEP';
 const hash = 'SHA-256';
@@ -10,11 +9,11 @@ const RSA = 2048;
 const IV_LENGTH = 12;
 
 const MESSAGE_TYPES = {
-    ENCRYPTED: 1,
+    PREKEY_MESSAGE: 1,
+    NORMAL_MESSAGE: 2,
     FALLBACK: 9999
 };
 
-// Error classes
 export class E2EEError extends Error {
     constructor(message, code, originalError = null) {
         super(message);
@@ -33,6 +32,7 @@ class KeyStore {
         this.registrationId = null;
         this.sessionKeys = new Map();
         this.publicKeys = new Map();
+        this.sessionEstablished = new Set();
         this.loadFromStorage();
     }
 
@@ -42,6 +42,7 @@ class KeyStore {
             const storedRegId = localStorage.getItem('registration_id');
             const storedSessions = localStorage.getItem('session_keys');
             const storedPublicKeys = localStorage.getItem('public_keys');
+            const storedEstablished = localStorage.getItem('session_established');
 
             if (storedIdentity) {
                 const keyData = JSON.parse(storedIdentity);
@@ -94,8 +95,12 @@ class KeyStore {
                     this.publicKeys.set(recipientId, publicKey);
                 }
             }
+
+            if (storedEstablished) {
+                const established = JSON.parse(storedEstablished);
+                this.sessionEstablished = new Set(established);
+            }
         } catch (error) {
-            console.error('Error loading keys from storage:', error);
         }
     }
 
@@ -127,8 +132,9 @@ class KeyStore {
                 publicKeyData[recipientId] = keyJWK;
             }
             localStorage.setItem('public_keys', JSON.stringify(publicKeyData));
+
+            localStorage.setItem('session_established', JSON.stringify([...this.sessionEstablished]));
         } catch (error) {
-            console.error('Error saving keys to storage:', error);
         }
     }
 
@@ -163,9 +169,21 @@ class KeyStore {
         return this.sessionKeys.has(String(recipientId));
     }
 
+    async isSessionEstablished(recipientId) {
+        const recipientIdStr = String(recipientId);
+        return this.sessionEstablished.has(recipientIdStr) && this.sessionKeys.has(recipientIdStr);
+    }
+
+    async markSessionEstablished(recipientId) {
+        this.sessionEstablished.add(String(recipientId));
+        await this.saveToStorage();
+    }
+
     async removeSession(recipientId) {
-        this.sessionKeys.delete(String(recipientId));
-        this.publicKeys.delete(String(recipientId));
+        const recipientIdStr = String(recipientId);
+        this.sessionKeys.delete(recipientIdStr);
+        this.publicKeys.delete(recipientIdStr);
+        this.sessionEstablished.delete(recipientIdStr);
         await this.saveToStorage();
     }
 
@@ -183,12 +201,15 @@ class KeyStore {
         this.registrationId = null;
         this.sessionKeys.clear();
         this.publicKeys.clear();
+        this.sessionEstablished.clear();
         localStorage.removeItem('identity_keypair');
         localStorage.removeItem('registration_id');
         localStorage.removeItem('session_keys');
         localStorage.removeItem('public_keys');
+        localStorage.removeItem('session_established');
     }
 }
+
 const keyStore = new KeyStore();
 
 function validateRecipientId(recipientId) {
@@ -239,7 +260,6 @@ async function generateIV() {
     return crypto.getRandomValues(new Uint8Array(IV_LENGTH));
 }
 
-
 export async function initializeUserKeysIfNeeded() {
     try {
         const identityKeyPair = await keyStore.getIdentityKeyPair();
@@ -265,7 +285,7 @@ export async function initializeUserKeysIfNeeded() {
         await keyStore.setRegistrationId(newRegistrationId);
 
         const publicKeyJWK = await crypto.subtle.exportKey('jwk', newKeyPair.publicKey);
-        
+
         return {
             isNew: true,
             keysForServer: {
@@ -281,7 +301,7 @@ export async function initializeUserKeysIfNeeded() {
 export async function processPreKeyBundle(recipientId, preKeyBundle) {
     try {
         const recipientIdStr = validateRecipientId(recipientId);
-        
+
         if (!preKeyBundle.identityKey) {
             throw new E2EEError('Missing identity key in bundle');
         }
@@ -331,15 +351,20 @@ export async function encryptMessage(recipientId, plainTextMessage) {
         validateMessage(plainTextMessage);
 
         let sessionKey = await keyStore.getSessionKey(recipientIdStr);
-        
+        let messageType = MESSAGE_TYPES.NORMAL_MESSAGE;
+
         if (!sessionKey) {
-            sessionKey = await generateAESKey();
-            await keyStore.setSessionKey(recipientIdStr, sessionKey);
+            throw new EncryptionError(`No session key found for ${recipientIdStr}. Session must be established first.`);
+        }
+
+        const isSessionEstablished = await keyStore.isSessionEstablished(recipientIdStr);
+        if (!isSessionEstablished) {
+            messageType = MESSAGE_TYPES.PREKEY_MESSAGE;
         }
 
         const iv = await generateIV();
         const messageBuffer = new TextEncoder().encode(plainTextMessage);
-        
+
         const encryptedMessageBuffer = await crypto.subtle.encrypt(
             {
                 name: encrpytionAlgorithm,
@@ -349,35 +374,46 @@ export async function encryptMessage(recipientId, plainTextMessage) {
             messageBuffer
         );
 
-        const recipientPublicKey = await keyStore.getPublicKey(recipientIdStr);
-        
-        if (!recipientPublicKey) {
-            throw new EncryptionError(`No public key found for ${recipientIdStr}`);
+        let combinedData;
+
+        if (messageType === MESSAGE_TYPES.PREKEY_MESSAGE) {
+            const recipientPublicKey = await keyStore.getPublicKey(recipientIdStr);
+
+            if (!recipientPublicKey) {
+                throw new EncryptionError(`No public key found for ${recipientIdStr}`);
+            }
+
+            const sessionKeyJWK = await crypto.subtle.exportKey('jwk', sessionKey);
+            const sessionKeyBuffer = new TextEncoder().encode(JSON.stringify(sessionKeyJWK));
+
+            const encryptedSessionKeyBuffer = await crypto.subtle.encrypt(
+                {
+                    name: asymmetric,
+                },
+                recipientPublicKey,
+                sessionKeyBuffer
+            );
+
+            combinedData = {
+                iv: arrayBufferToBase64(iv.buffer),
+                sessionKey: arrayBufferToBase64(encryptedSessionKeyBuffer),
+                message: arrayBufferToBase64(encryptedMessageBuffer)
+            };
+
+            await keyStore.markSessionEstablished(recipientIdStr);
+        } else {
+            combinedData = {
+                iv: arrayBufferToBase64(iv.buffer),
+                message: arrayBufferToBase64(encryptedMessageBuffer)
+            };
         }
-
-        const sessionKeyJWK = await crypto.subtle.exportKey('jwk', sessionKey);
-        const sessionKeyBuffer = new TextEncoder().encode(JSON.stringify(sessionKeyJWK));
-        
-        const encryptedSessionKeyBuffer = await crypto.subtle.encrypt(
-            {
-                name: asymmetric,
-            },
-            recipientPublicKey,
-            sessionKeyBuffer
-        );
-
-        const combinedData = {
-            iv: arrayBufferToBase64(iv.buffer),
-            sessionKey: arrayBufferToBase64(encryptedSessionKeyBuffer),
-            message: arrayBufferToBase64(encryptedMessageBuffer)
-        };
 
         const encryptedContent = arrayBufferToBase64(
             new TextEncoder().encode(JSON.stringify(combinedData)).buffer
         );
 
         return {
-            type: MESSAGE_TYPES.ENCRYPTED,
+            type: messageType,
             encryptedContent,
             registrationId: await keyStore.getRegistrationId() || 0,
             messageIndex: Date.now(),
@@ -400,36 +436,44 @@ export async function decryptMessage(senderId, remoteSignalMessage) {
             return new TextDecoder().decode(new Uint8Array(encryptedContent));
         }
 
-
         const encryptedData = JSON.parse(
             new TextDecoder().decode(base64ToArrayBuffer(remoteSignalMessage.encryptedContent))
         );
 
+        let sessionKey;
 
-        const identityKeyPair = await keyStore.getIdentityKeyPair();
-        if (!identityKeyPair) {
-            throw new DecryptionError('No identity key pair found');
+        if (remoteSignalMessage.type === MESSAGE_TYPES.PREKEY_MESSAGE) {
+            const identityKeyPair = await keyStore.getIdentityKeyPair();
+            if (!identityKeyPair) {
+                throw new DecryptionError('No identity key pair found');
+            }
+
+            const encryptedSessionKey = base64ToArrayBuffer(encryptedData.sessionKey);
+            const sessionKeyBuffer = await crypto.subtle.decrypt(
+                {
+                    name: asymmetric,
+                },
+                identityKeyPair.privateKey,
+                encryptedSessionKey
+            );
+
+            const sessionKeyJWK = JSON.parse(new TextDecoder().decode(sessionKeyBuffer));
+            sessionKey = await crypto.subtle.importKey(
+                'jwk',
+                sessionKeyJWK,
+                { name: encrpytionAlgorithm },
+                true,
+                ['encrypt', 'decrypt']
+            );
+
+            await keyStore.setSessionKey(senderIdStr, sessionKey);
+            await keyStore.markSessionEstablished(senderIdStr);
+        } else {
+            sessionKey = await keyStore.getSessionKey(senderIdStr);
+            if (!sessionKey) {
+                throw new DecryptionError(`No session key found for ${senderIdStr}`);
+            }
         }
-
-        const encryptedSessionKey = base64ToArrayBuffer(encryptedData.sessionKey);
-        const sessionKeyBuffer = await crypto.subtle.decrypt(
-            {
-                name: asymmetric,
-            },
-            identityKeyPair.privateKey,
-            encryptedSessionKey
-        );
-
-        const sessionKeyJWK = JSON.parse(new TextDecoder().decode(sessionKeyBuffer));
-        const sessionKey = await crypto.subtle.importKey(
-            'jwk',
-            sessionKeyJWK,
-            { name: encrpytionAlgorithm },
-            true,
-            ['encrypt', 'decrypt']
-        );
-
-        await keyStore.setSessionKey(senderIdStr, sessionKey);
 
         const iv = base64ToArrayBuffer(encryptedData.iv);
         const encryptedMessage = base64ToArrayBuffer(encryptedData.message);
@@ -452,7 +496,7 @@ export async function decryptMessage(senderId, remoteSignalMessage) {
 export async function decryptWithStoredSessionKey(partnerId, encryptedData) {
     try {
         const partnerIdStr = validateRecipientId(partnerId);
-        
+
         const sessionKey = await keyStore.getSessionKey(partnerIdStr);
         if (!sessionKey) {
             throw new DecryptionError(`No session key found for partner ${partnerIdStr}`);
@@ -483,7 +527,7 @@ export async function ensureSessionFromPreKeyMessage(message) {
         }
 
         const senderIdStr = String(message.senderId);
-        
+
         if (await keyStore.hasSession(senderIdStr)) {
             return true;
         }
@@ -504,11 +548,12 @@ export async function getKeyStats() {
     try {
         const identityKeyPair = await keyStore.getIdentityKeyPair();
         const registrationId = await keyStore.getRegistrationId();
-        
+
         return {
             hasIdentityKey: !!identityKeyPair,
             hasRegistrationId: !!registrationId,
-            sessionCount: keyStore.sessionKeys.size
+            sessionCount: keyStore.sessionKeys.size,
+            establishedSessions: keyStore.sessionEstablished.size
         };
     } catch (error) {
         return null;
@@ -519,6 +564,6 @@ export async function clearAllKeys() {
     try {
         await keyStore.clearAll();
     } catch (error) {
-        console.error('Error clearing keys:', error);
+
     }
 }
